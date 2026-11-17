@@ -22,17 +22,21 @@ export const PreviewViewport: React.FC<PreviewViewportProps> = ({
   const [viewMode, setViewMode] = useState<'themed' | 'original'>('themed');
   const [isRendering, setIsRendering] = useState<boolean>(false);
   const [pageDimensions, setPageDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const activeTheme = RESTYLE_THEMES.find((t) => t.id === selectedThemeId) || RESTYLE_THEMES[0];
 
   useEffect(() => {
     if (fileFormat === 'pdf' && pdfBytes && canvasRef.current) {
       let isCancelled = false;
+      const abortController = new AbortController();
       setIsRendering(true);
+      setPreviewError(null);
 
       renderPdfPageToCanvas(pdfBytes, {
         canvas: canvasRef.current,
         scale: zoomScale,
+        signal: abortController.signal,
       })
         .then((result) => {
           if (!isCancelled) {
@@ -44,16 +48,29 @@ export const PreviewViewport: React.FC<PreviewViewportProps> = ({
           }
         })
         .catch((err) => {
-          console.error('Preview render error:', err);
+          const isAbort = abortController.signal.aborted ||
+            (err instanceof DOMException && err.name === 'AbortError') ||
+            (err instanceof Error && err.name === 'RenderingCancelledException');
+          if (!isAbort) {
+            console.error('Preview render error:', err);
+          }
           if (!isCancelled) {
             setIsRendering(false);
+            if (!isAbort) {
+              setPreviewError('Preview could not be rendered. You can still try converting the document.');
+            }
           }
         });
 
       return () => {
         isCancelled = true;
+        abortController.abort();
       };
     }
+
+    setIsRendering(false);
+    setPageDimensions(null);
+    setPreviewError(null);
   }, [pdfBytes, fileFormat, zoomScale]);
 
   const handleZoomIn = () => {
@@ -222,6 +239,25 @@ export const PreviewViewport: React.FC<PreviewViewportProps> = ({
             <span>Rendering vector preview...</span>
           </div>
         )}
+
+        {previewError && !isRendering && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '12px',
+              right: '12px',
+              maxWidth: '280px',
+              background: 'rgba(74, 34, 40, 0.95)',
+              border: '1px solid #7f1d1d',
+              padding: '8px 10px',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '11px',
+              color: '#fecaca',
+            }}
+          >
+            {previewError}
+          </div>
+        )}
       </div>
 
       {/* Footer bar showing verification indicator */}
@@ -242,7 +278,7 @@ export const PreviewViewport: React.FC<PreviewViewportProps> = ({
           <span>Vector text verification: Selectable text retained without glyph distortion</span>
         </div>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
-          Mode: Blend-Mode Overlays (Non-Rasterized)
+          Mode: Vector Color Transfer (Non-Rasterized)
         </div>
       </div>
     </div>

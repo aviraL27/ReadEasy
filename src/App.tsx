@@ -50,7 +50,8 @@ export const App: React.FC = () => {
     }
 
     if (selectedFile.size > 120 * 1024 * 1024) {
-      setErrorMessage('File exceeds 120 MB. Browser memory may be constrained for very large files.');
+      setErrorMessage('Files larger than 120 MB are not supported because browser memory may be constrained.');
+      return;
     }
 
     try {
@@ -145,7 +146,8 @@ export const App: React.FC = () => {
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
-      URL.revokeObjectURL(url);
+      // Revoking in the same task can cancel downloads in some browsers.
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
 
       setDownloadSuccess(`Successfully restyled and downloaded "${downloadName}".`);
     } catch (err: unknown) {
@@ -223,8 +225,8 @@ export const App: React.FC = () => {
             <div>
               <div className="limitation-title">Notice on Vector Dark Themes & Embedded Photos</div>
               <div>
-                Because blend modes invert underlying luminosity to maintain 100% vector text acuity,
-                embedded photographic images and multi-colored raster diagrams will also appear color-inverted.
+                Because the export remaps painted colours to maintain 100% vector text acuity,
+                embedded photographic images and multi-colored raster diagrams are recoloured too.
                 Pure vector text and graphics remain razor sharp and fully selectable.
                 A V2 Smart Mode content-stream rewriter is designed to leave raster images untouched.
               </div>

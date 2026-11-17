@@ -1,4 +1,15 @@
-import { PDFDocument, rgb, BlendMode } from 'pdf-lib';
+import {
+  PDFDocument,
+  PDFArray,
+  type PDFPage,
+  fill,
+  popGraphicsState,
+  pushGraphicsState,
+  rectangle,
+  setFillingRgbColor,
+  setGraphicsState,
+} from 'pdf-lib';
+import { copyBytes, hasPdfHeader } from './binary';
 
 export interface ThemeColor {
   r: number; // 0 to 1
@@ -6,10 +17,14 @@ export interface ThemeColor {
   b: number; // 0 to 1
 }
 
-export interface ThemeLayer {
-  color: ThemeColor;
-  blendMode: BlendMode;
-  opacity?: number;
+/**
+ * A per-channel linear transfer function. Each source channel is mapped from
+ * `transferStart` at source value 0 to `transferEnd` at source value 1.
+ */
+export interface PdfColorTransform {
+  background: ThemeColor;
+  transferStart: ThemeColor;
+  transferEnd: ThemeColor;
 }
 
 export type ThemeId = 'blackboard' | 'old-book' | 'true-black' | 'amber';
@@ -19,7 +34,7 @@ export interface RestyleTheme {
   name: string;
   subtitle: string;
   description: string;
-  layers: ThemeLayer[];
+  pdfTransform: PdfColorTransform;
   // Metadata for UI cards & preview simulation
   badgeText: string;
   previewBg: string;
@@ -42,22 +57,15 @@ export const RESTYLE_THEMES: RestyleTheme[] = [
     name: 'Blackboard',
     subtitle: 'Dark Slate / Soft Chalk',
     description: 'Inverts white background to black, then softens contrast with a charcoal wash. Easy on tired eyes during nighttime reading.',
-    badgeText: 'Difference + Lighten',
+    badgeText: 'Vector Color Remap',
     previewBg: '#2b2b2b',
     previewText: '#e5e5e5',
     accentRgb: '43, 43, 43',
-    layers: [
-      {
-        // Layer 1: Invert white background and dark text
-        color: { r: 1, g: 1, b: 1 },
-        blendMode: BlendMode.Difference,
-      },
-      {
-        // Layer 2: Soften pure black background to #2b2b2b
-        color: { r: 43 / 255, g: 43 / 255, b: 43 / 255 },
-        blendMode: BlendMode.Lighten,
-      },
-    ],
+    pdfTransform: {
+      background: { r: 43 / 255, g: 43 / 255, b: 43 / 255 },
+      transferStart: { r: 1, g: 1, b: 1 },
+      transferEnd: { r: 43 / 255, g: 43 / 255, b: 43 / 255 },
+    },
     cssMixLayers: [
       { color: '#ffffff', mixBlendMode: 'difference' },
       { color: '#2b2b2b', mixBlendMode: 'lighten' },
@@ -68,17 +76,15 @@ export const RESTYLE_THEMES: RestyleTheme[] = [
     name: 'Old Book',
     subtitle: 'Warm Cream / Sepia',
     description: 'Warm parchment tint that cuts blue light. Ideal for long-form study, research papers, and daylight reading.',
-    badgeText: 'Multiply',
+    badgeText: 'Vector Sepia Remap',
     previewBg: '#f4ecd8',
     previewText: '#26221c',
     accentRgb: '244, 236, 216',
-    layers: [
-      {
-        // Warm parchment overlay: #f4ecd8
-        color: { r: 244 / 255, g: 236 / 255, b: 216 / 255 },
-        blendMode: BlendMode.Multiply,
-      },
-    ],
+    pdfTransform: {
+      background: { r: 244 / 255, g: 236 / 255, b: 216 / 255 },
+      transferStart: { r: 0, g: 0, b: 0 },
+      transferEnd: { r: 244 / 255, g: 236 / 255, b: 216 / 255 },
+    },
     cssMixLayers: [
       { color: '#f4ecd8', mixBlendMode: 'multiply' },
     ],
@@ -88,17 +94,15 @@ export const RESTYLE_THEMES: RestyleTheme[] = [
     name: 'True Black',
     subtitle: 'OLED / High Contrast',
     description: 'Pure vector inversion. Produces pitch-black background (#000000) for maximum battery savings on OLED and deep contrast.',
-    badgeText: 'Difference',
+    badgeText: 'Vector Inversion',
     previewBg: '#000000',
     previewText: '#ffffff',
     accentRgb: '0, 0, 0',
-    layers: [
-      {
-        // Layer 1: Invert everything cleanly
-        color: { r: 1, g: 1, b: 1 },
-        blendMode: BlendMode.Difference,
-      },
-    ],
+    pdfTransform: {
+      background: { r: 0, g: 0, b: 0 },
+      transferStart: { r: 1, g: 1, b: 1 },
+      transferEnd: { r: 0, g: 0, b: 0 },
+    },
     cssMixLayers: [
       { color: '#ffffff', mixBlendMode: 'difference' },
     ],
@@ -108,27 +112,15 @@ export const RESTYLE_THEMES: RestyleTheme[] = [
     name: 'Amber',
     subtitle: 'Retro Phosphor CRT',
     description: 'Warm monochrome amber glow on dark slate. Minimizes blue light emission to virtually zero for pitch-black rooms.',
-    badgeText: 'Diff + Mult + Lighten',
+    badgeText: 'Vector Amber Remap',
     previewBg: '#1a1a1a',
     previewText: '#ffb000',
     accentRgb: '255, 176, 0',
-    layers: [
-      {
-        // Layer 1: Invert
-        color: { r: 1, g: 1, b: 1 },
-        blendMode: BlendMode.Difference,
-      },
-      {
-        // Layer 2: Tint with Amber #ffb000
-        color: { r: 255 / 255, g: 176 / 255, b: 0 / 255 },
-        blendMode: BlendMode.Multiply,
-      },
-      {
-        // Layer 3: Floor dark background at #1a1a1a
-        color: { r: 26 / 255, g: 26 / 255, b: 26 / 255 },
-        blendMode: BlendMode.Lighten,
-      },
-    ],
+    pdfTransform: {
+      background: { r: 26 / 255, g: 26 / 255, b: 26 / 255 },
+      transferStart: { r: 1, g: 176 / 255, b: 26 / 255 },
+      transferEnd: { r: 26 / 255, g: 26 / 255, b: 26 / 255 },
+    },
     cssMixLayers: [
       { color: '#ffffff', mixBlendMode: 'difference' },
       { color: '#ffb000', mixBlendMode: 'multiply' },
@@ -159,10 +151,81 @@ export interface RestylePdfResult {
   durationMs: number;
 }
 
+function getPageBounds(page: PDFPage) {
+  const mediaBox = page.getMediaBox();
+  const cropBox = page.getCropBox();
+  const minX = Math.min(mediaBox.x, cropBox.x);
+  const minY = Math.min(mediaBox.y, cropBox.y);
+  const maxX = Math.max(mediaBox.x + mediaBox.width, cropBox.x + cropBox.width);
+  const maxY = Math.max(mediaBox.y + mediaBox.height, cropBox.y + cropBox.height);
+
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
 /**
- * Applies vector blend mode overlays to all pages in a PDF document.
- * Wraps existing content streams in q/Q to prevent graphics state leak,
- * respects CropBox/MediaBox/rotation, and never rasterizes vector text.
+ * Insert a solid background, then wrap the original page content in a PDF
+ * transfer-function graphics state. Unlike Difference/Lighten blend overlays,
+ * this uses standard colour transfer functions and renders consistently in
+ * Chrome, Acrobat, and PDF.js while keeping every source path and glyph vector.
+ */
+function applyPdfColorTransform(page: PDFPage, transform: PdfColorTransform): void {
+  const context = page.doc.context;
+  const bounds = getPageBounds(page);
+
+  const createFunction = (start: number, end: number) =>
+    context.register(
+      context.obj({
+        FunctionType: 2,
+        Domain: [0, 1],
+        Range: [0, 1],
+        C0: [start],
+        C1: [end],
+        N: 1,
+      })
+    );
+
+  const transferFunctions = [
+    createFunction(transform.transferStart.r, transform.transferEnd.r),
+    createFunction(transform.transferStart.g, transform.transferEnd.g),
+    createFunction(transform.transferStart.b, transform.transferEnd.b),
+    // PDF transfer-function arrays contain four entries; RGB renderers use
+    // the first three and the fourth preserves the remaining component.
+    createFunction(0, 1),
+  ];
+  const graphicsState = context.register(
+    context.obj({ Type: 'ExtGState', TR: transferFunctions })
+  );
+
+  // normalize creates a q/Q pair around the original streams. We place our
+  // background before those streams and transfer state immediately around them.
+  page.node.normalize();
+  const graphicsStateName = page.node.newExtGState('ReadEasyTransfer', graphicsState);
+  const contents = page.node.Contents();
+  if (!(contents instanceof PDFArray)) {
+    throw new Error('Unable to normalize the PDF page content streams.');
+  }
+  const background = context.register(
+    context.contentStream([
+      pushGraphicsState(),
+      setFillingRgbColor(transform.background.r, transform.background.g, transform.background.b),
+      rectangle(bounds.x, bounds.y, bounds.width, bounds.height),
+      fill(),
+      popGraphicsState(),
+    ])
+  );
+  const transferStart = context.register(
+    context.contentStream([pushGraphicsState(), setGraphicsState(graphicsStateName)])
+  );
+  const transferEnd = context.register(context.contentStream([popGraphicsState()]));
+
+  contents.insert(0, background);
+  contents.insert(1, transferStart);
+  contents.push(transferEnd);
+}
+
+/**
+ * Restyles all pages with vector-preserving PDF transfer functions. The source
+ * content remains searchable/selectable; only its paint colours are remapped.
  */
 export async function restylePdf(
   inputData: ArrayBuffer | Uint8Array,
@@ -170,6 +233,10 @@ export async function restylePdf(
 ): Promise<RestylePdfResult> {
   const startTime = performance.now();
   const originalSize = inputData.byteLength;
+
+  if (!hasPdfHeader(inputData instanceof Uint8Array ? inputData : new Uint8Array(inputData))) {
+    throw new Error('The selected file does not contain a valid PDF header.');
+  }
 
   const theme = RESTYLE_THEMES.find((t) => t.id === options.themeId);
   if (!theme) {
@@ -185,7 +252,9 @@ export async function restylePdf(
 
   let pdfDoc: PDFDocument;
   try {
-    pdfDoc = await PDFDocument.load(inputData, {
+    // Keep the caller's byte array immutable. This also makes the engine safe
+    // if a PDF library changes its input-buffer ownership in a future release.
+    pdfDoc = await PDFDocument.load(copyBytes(inputData), {
       ignoreEncryption: false,
       updateMetadata: false,
     });
@@ -206,11 +275,6 @@ export async function restylePdf(
     throw new Error('The PDF document contains 0 pages.');
   }
 
-  // Pre-acquire push/pop graphics state streams to wrap content cleanly
-  const context = pdfDoc.context;
-  const pushGStateStream = context.getPushGraphicsStateContentStream();
-  const popGStateStream = context.getPopGraphicsStateContentStream();
-
   for (let i = 0; i < totalPages; i++) {
     const page = pages[i];
     const pageNum = i + 1;
@@ -222,39 +286,7 @@ export async function restylePdf(
       status: `Restyling vector page ${pageNum} of ${totalPages}...`,
     });
 
-    // 1. Isolate original content stream graphics state:
-    // Normalize turns single stream to PDFArray if needed, then wrapContentStreams
-    // prepends `q` (save graphics state) and appends `Q` (restore graphics state).
-    page.node.normalize();
-    page.node.wrapContentStreams(pushGStateStream, popGStateStream);
-
-    // 2. Compute full-page bounds covering both MediaBox and CropBox
-    // This ensures no white margins or edges peek through regardless of viewer geometry
-    const mediaBox = page.getMediaBox();
-    const cropBox = page.getCropBox();
-
-    const minX = Math.min(mediaBox.x, cropBox.x);
-    const minY = Math.min(mediaBox.y, cropBox.y);
-    const maxX = Math.max(mediaBox.x + mediaBox.width, cropBox.x + cropBox.width);
-    const maxY = Math.max(mediaBox.y + mediaBox.height, cropBox.y + cropBox.height);
-
-    const rectX = minX;
-    const rectY = minY;
-    const rectWidth = maxX - minX;
-    const rectHeight = maxY - minY;
-
-    // 3. Draw configured vector blend layers
-    for (const layer of theme.layers) {
-      page.drawRectangle({
-        x: rectX,
-        y: rectY,
-        width: rectWidth,
-        height: rectHeight,
-        color: rgb(layer.color.r, layer.color.g, layer.color.b),
-        blendMode: layer.blendMode,
-        opacity: layer.opacity ?? 1,
-      });
-    }
+    applyPdfColorTransform(page, theme.pdfTransform);
 
     // Allow UI thread to breathe on large multi-page documents
     if (i % 5 === 0) {
@@ -295,7 +327,11 @@ export async function restyleSinglePageForPreview(
   inputData: ArrayBuffer | Uint8Array,
   themeId: ThemeId
 ): Promise<Uint8Array> {
-  const originalDoc = await PDFDocument.load(inputData, {
+  if (!hasPdfHeader(inputData instanceof Uint8Array ? inputData : new Uint8Array(inputData))) {
+    throw new Error('The selected file does not contain a valid PDF header.');
+  }
+
+  const originalDoc = await PDFDocument.load(copyBytes(inputData), {
     ignoreEncryption: false,
     updateMetadata: false,
   });
@@ -307,30 +343,7 @@ export async function restyleSinglePageForPreview(
   const theme = RESTYLE_THEMES.find((t) => t.id === themeId) || RESTYLE_THEMES[0];
   const page = previewDoc.getPages()[0];
 
-  const pushGState = previewDoc.context.getPushGraphicsStateContentStream();
-  const popGState = previewDoc.context.getPopGraphicsStateContentStream();
-  page.node.normalize();
-  page.node.wrapContentStreams(pushGState, popGState);
-
-  const mediaBox = page.getMediaBox();
-  const cropBox = page.getCropBox();
-
-  const minX = Math.min(mediaBox.x, cropBox.x);
-  const minY = Math.min(mediaBox.y, cropBox.y);
-  const maxX = Math.max(mediaBox.x + mediaBox.width, cropBox.x + cropBox.width);
-  const maxY = Math.max(mediaBox.y + mediaBox.height, cropBox.y + cropBox.height);
-
-  for (const layer of theme.layers) {
-    page.drawRectangle({
-      x: minX,
-      y: minY,
-      width: maxX - minX,
-      height: maxY - minY,
-      color: rgb(layer.color.r, layer.color.g, layer.color.b),
-      blendMode: layer.blendMode,
-      opacity: layer.opacity ?? 1,
-    });
-  }
+  applyPdfColorTransform(page, theme.pdfTransform);
 
   return await previewDoc.save();
 }

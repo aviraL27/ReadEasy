@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import type { ThemeId } from './pdfThemeEngine';
+import { copyBytes } from './binary';
 
 export interface OfficeThemePalette {
   bgHex: string;
@@ -43,6 +44,27 @@ export interface OfficeRestyleResult {
   durationMs: number;
 }
 
+async function openOfficePackage(
+  inputData: ArrayBuffer | Uint8Array,
+  requiredDocumentPart: string,
+  format: 'DOCX' | 'PPTX'
+): Promise<JSZip> {
+  let zip: JSZip;
+
+  try {
+    // Do not let a ZIP implementation take ownership of application state.
+    zip = await JSZip.loadAsync(copyBytes(inputData));
+  } catch {
+    throw new Error(`The selected .${format.toLowerCase()} file is not a readable Office ZIP package.`);
+  }
+
+  if (!zip.file('[Content_Types].xml') || !zip.file(requiredDocumentPart)) {
+    throw new Error(`The selected file is not a valid ${format} document.`);
+  }
+
+  return zip;
+}
+
 /**
  * Restyles a DOCX file directly at the XML level via JSZip.
  * Sets document background (<w:background>), enables displayBackgroundShape in settings,
@@ -56,7 +78,7 @@ export async function restyleDocx(
   const originalSize = inputData.byteLength;
   const palette = OFFICE_THEME_PALETTES[themeId];
 
-  const zip = await JSZip.loadAsync(inputData);
+  const zip = await openOfficePackage(inputData, 'word/document.xml', 'DOCX');
 
   // 1. Update word/document.xml
   const docXmlFile = zip.file('word/document.xml');
@@ -125,7 +147,7 @@ export async function restylePptx(
   const originalSize = inputData.byteLength;
   const palette = OFFICE_THEME_PALETTES[themeId];
 
-  const zip = await JSZip.loadAsync(inputData);
+  const zip = await openOfficePackage(inputData, 'ppt/presentation.xml', 'PPTX');
 
   // 1. Update theme color scheme if ppt/theme/theme1.xml exists
   const themeFile = zip.file('ppt/theme/theme1.xml');

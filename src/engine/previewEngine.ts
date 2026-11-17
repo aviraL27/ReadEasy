@@ -1,4 +1,5 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import { copyBytes, hasPdfHeader } from './binary';
 
 // Configure PDF.js worker in Vite
 try {
@@ -14,6 +15,7 @@ try {
 export interface RenderPageOptions {
   canvas: HTMLCanvasElement;
   scale?: number;
+  signal?: AbortSignal;
 }
 
 export interface RenderResult {
@@ -30,55 +32,72 @@ export async function renderPdfPageToCanvas(
   pdfData: ArrayBuffer | Uint8Array,
   options: RenderPageOptions
 ): Promise<RenderResult> {
+  if (!hasPdfHeader(pdfData instanceof Uint8Array ? pdfData : new Uint8Array(pdfData))) {
+    throw new Error('The selected file does not contain a valid PDF header.');
+  }
+
+  // getDocument transfers this buffer to the PDF.js worker. Keeping the copy
+  // local prevents previewing from emptying the upload bytes used for export.
+  const workerData = copyBytes(pdfData);
   const loadingTask = pdfjsLib.getDocument({
-    data: pdfData,
+    data: workerData,
     cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.5.438/cmaps/',
     cMapPacked: true,
   });
 
-  const pdfDoc = await loadingTask.promise;
-  const page = await pdfDoc.getPage(1);
+  try {
+    const pdfDoc = await loadingTask.promise;
+    if (options.signal?.aborted) {
+      throw new DOMException('Preview was cancelled.', 'AbortError');
+    }
 
-  const desiredScale = options.scale ?? 1.5;
-  const viewport = page.getViewport({ scale: desiredScale });
+    const page = await pdfDoc.getPage(1);
+    const desiredScale = options.scale ?? 1.5;
+    const viewport = page.getViewport({ scale: desiredScale });
 
-  const canvas = options.canvas;
-  const context = canvas.getContext('2d');
-  if (!context) {
-    throw new Error('Failed to get 2d canvas context');
+    const canvas = options.canvas;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Failed to get 2d canvas context');
+    }
+
+    // Adjust for high-DPI displays (Retina)
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(viewport.width * dpr);
+    canvas.height = Math.floor(viewport.height * dpr);
+    canvas.style.width = `${Math.floor(viewport.width)}px`;
+    canvas.style.height = `${Math.floor(viewport.height)}px`;
+
+    context.save();
+    context.scale(dpr, dpr);
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, viewport.width, viewport.height);
+
+    const renderTask = page.render({ canvasContext: context, viewport, canvas });
+    const cancelRender = () => renderTask.cancel();
+    options.signal?.addEventListener('abort', cancelRender, { once: true });
+
+    try {
+      await renderTask.promise;
+    } finally {
+      options.signal?.removeEventListener('abort', cancelRender);
+      context.restore();
+    }
+
+    if (options.signal?.aborted) {
+      throw new DOMException('Preview was cancelled.', 'AbortError');
+    }
+
+    const unscaledViewport = page.getViewport({ scale: 1 });
+    return {
+      width: viewport.width,
+      height: viewport.height,
+      originalWidth: unscaledViewport.width,
+      originalHeight: unscaledViewport.height,
+    };
+  } finally {
+    await loadingTask.destroy();
   }
-
-  // Adjust for high-DPI displays (Retina)
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.floor(viewport.width * dpr);
-  canvas.height = Math.floor(viewport.height * dpr);
-  canvas.style.width = `${Math.floor(viewport.width)}px`;
-  canvas.style.height = `${Math.floor(viewport.height)}px`;
-
-  context.save();
-  context.scale(dpr, dpr);
-
-  // Clear canvas with neutral white
-  context.fillStyle = '#ffffff';
-  context.fillRect(0, 0, viewport.width, viewport.height);
-
-  const renderContext = {
-    canvasContext: context,
-    viewport: viewport,
-    canvas: canvas,
-  };
-
-  await page.render(renderContext).promise;
-  context.restore();
-
-  const unscaledViewport = page.getViewport({ scale: 1 });
-
-  return {
-    width: viewport.width,
-    height: viewport.height,
-    originalWidth: unscaledViewport.width,
-    originalHeight: unscaledViewport.height,
-  };
 }
 
 /**
@@ -88,8 +107,13 @@ export async function inspectPdf(pdfData: ArrayBuffer | Uint8Array): Promise<{
   pageCount: number;
   encrypted: boolean;
 }> {
+  if (!hasPdfHeader(pdfData instanceof Uint8Array ? pdfData : new Uint8Array(pdfData))) {
+    throw new Error('The selected file does not contain a valid PDF header.');
+  }
+
+  // As above, PDF.js owns (and transfers) only a disposable copy.
+  const loadingTask = pdfjsLib.getDocument({ data: copyBytes(pdfData) });
   try {
-    const loadingTask = pdfjsLib.getDocument({ data: pdfData });
     const doc = await loadingTask.promise;
     return {
       pageCount: doc.numPages,
@@ -101,5 +125,7 @@ export async function inspectPdf(pdfData: ArrayBuffer | Uint8Array): Promise<{
       return { pageCount: 0, encrypted: true };
     }
     throw err;
+  } finally {
+    await loadingTask.destroy();
   }
 }
