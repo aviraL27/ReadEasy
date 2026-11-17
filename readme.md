@@ -1,131 +1,201 @@
-# ReadEasy — Client-Side Vector Document Restyler
+# ReadEasy
 
-> Restyle documents into eye-friendly dark and paper themes **without rasterizing them**. Vector glyphs remain 100% sharp and selectable, file sizes stay nearly identical (+0.5–1 KB), and zero bytes ever leave your machine.
+Client-side document restyler that transforms PDFs and Office documents into high-contrast dark and paper themes without rasterization. Vector paths and font glyphs remain scalable curves, text remains selectable/searchable, and processed file size increases by less than 4 KB.
 
----
-
-## Key Features
-
-- **Vector-Native Blend Modes**: Uses `pdf-lib` to inject PDF graphics state operators (`q`/`Q`) and full-page blend mode rectangles. No canvas flattening or lossy image re-encoding.
-- **100% Selectable & Searchable Text**: Text never becomes pixels. You can search, select, copy, and use screen readers as in the original document.
-- **Zero Uploads / Fully Client-Side**: No backend, no analytics, no external APIs. All computations execute directly in your browser's WebAssembly and JavaScript environment.
-- **Impeccable Minimalist UI**: Strictly follows [impeccable.style](https://impeccable.style) — clean, professional, high-contrast monochrome design, soothing to the eyes.
-- **Instant Live Preview**: Page 1 live vector preview with zoom controls and "Themed vs. Original" comparison toggle.
-- **V2 Office Support Included**: XML-level restyling for **PPTX** and **DOCX** via `JSZip` without touching embedded images.
+Zero server infrastructure. Processing occurs entirely in-browser memory.
 
 ---
 
-## Restyle Themes & Blend Recipes
+## Architecture Overview
 
-Themes are defined as a declarative config array of layer lists `({ color, blendMode })`:
+```mermaid
+flowchart TD
+    subgraph Client["Browser Sandbox (Zero External Requests)"]
+        subgraph MainBundle["Initial Bundle (Split, <300 KB gzip)"]
+            App["App.tsx (State Orchestrator)"]
+            Drop["DropZone (Drag-and-Drop)"]
+            Themes["ThemeSelector (4 Presets)"]
+            Sample["sampleDocument.ts (Vector Generator)"]
+            Binary["binary.ts (Header Verification)"]
+        end
 
-| Theme | Subtitle | Vector Blend Recipe | Purpose |
-|---|---|---|---|
-| **Blackboard** | Dark Slate / Soft Chalk | `Difference(White)` &rarr; `Lighten(#2B2B2B)` | Smooth dark slate with softened contrast for nighttime reading |
-| **Old Book** | Warm Cream / Sepia | `Multiply(#F4ECD8)` | Warm parchment tint that reduces harsh blue light for long study |
-| **True Black** | OLED / High Contrast | `Difference(White)` | Pure `#000000` pitch black for maximum OLED battery savings |
-| **Amber** | Retro Phosphor CRT | `Difference(White)` &rarr; `Multiply(#FFB000)` &rarr; `Lighten(#1A1A1A)` | Warm monochrome amber glow with near-zero blue light |
+        subgraph LazyEngine["Lazy-Loaded Preview Engine (~1.7 MB on-demand)"]
+            Lazy["lazyPreview.ts (Dynamic Import Wrapper)"]
+            Preview["previewEngine.ts (PDF.js Canvas Renderer)"]
+            Worker["pdf.worker.min.mjs (Dedicated Worker)"]
+            CMaps["Local CMaps (public/cmaps/*.bcmap)"]
+        end
 
----
+        subgraph VectorEngines["Transformation Engines"]
+            PdfEngine["pdfThemeEngine.ts (pdf-lib)"]
+            OfficeEngine["officeThemeEngine.ts (JSZip)"]
+        end
 
-## Technical Approach: Blend-Mode Overlays
+        BlobGen["In-Memory Blob URL Generator"]
+        Anchor["Local File Download (<name>_<theme>.<ext>)"]
+    end
 
-### Graphics State Isolation (`q` / `Q`)
-Before drawing overlay rectangles on a page, the existing content stream is normalized and wrapped with push (`q`) and pop (`Q`) graphics state operators:
-```ts
-page.node.normalize();
-page.node.wrapContentStreams(
-  doc.context.getPushGraphicsStateContentStream(),
-  doc.context.getPopGraphicsStateContentStream()
-);
-```
-This guarantees that any transformation matrix (CTM), clip path, or color state in the original document cannot leak into the overlay or clip the full-page rectangle.
-
-### Geometry & Box Coverage
-To eliminate white seams or edge bleeds across different PDF viewers, the overlay computes the bounding union of both `MediaBox` and `CropBox`:
-```ts
-const mediaBox = page.getMediaBox();
-const cropBox = page.getCropBox();
-
-const minX = Math.min(mediaBox.x, cropBox.x);
-const minY = Math.min(mediaBox.y, cropBox.y);
-const maxX = Math.max(mediaBox.x + mediaBox.width, cropBox.x + cropBox.width);
-const maxY = Math.max(mediaBox.y + mediaBox.height, cropBox.y + cropBox.height);
-
-page.drawRectangle({
-  x: minX,
-  y: minY,
-  width: maxX - minX,
-  height: maxY - minY,
-  color: rgb(layer.color.r, layer.color.g, layer.color.b),
-  blendMode: layer.blendMode,
-});
+    Drop --> Binary
+    Binary --> App
+    App --> Themes
+    Themes -->|"Requires Page 1 Preview"| Lazy
+    Lazy -->|"import()"| Preview
+    Preview --> Worker
+    Preview --> CMaps
+    Themes -->|"User clicks Convert"| PdfEngine
+    Themes -->|"DOCX / PPTX dropped"| OfficeEngine
+    PdfEngine --> BlobGen
+    OfficeEngine --> BlobGen
+    BlobGen --> Anchor
 ```
 
 ---
 
-## Tradeoffs: Vector Blend-Mode vs. Rasterization vs. Smart Rewriter
+## PDF Vector Transformation Pipeline
 
-| Metric | Naive Rasterization (Canvas screenshot) | ReadEasy Vector Blend Overlays | V2 Smart Mode (Operator Rewriting) |
-|---|---|---|---|
-| **Text Sharpness** | Blurry / pixelated at zoom | **Mathematically infinite (pure vectors)** | **Mathematically infinite (pure vectors)** |
-| **File Size** | Balloons to 50 MB – 200 MB | **Negligible delta (~ +400 bytes to 1 KB)** | Small delta (~ +2 KB) |
-| **Text Selection / Search** | Destroyed (unless re-OCRed) | **100% Intact & Searchable** | **100% Intact & Searchable** |
-| **Processing Speed** | Slow (seconds per page) | **Instant (~5ms per page)** | Medium (~20ms per page) |
-| **Embedded Photos** | Can be preserved | **Inverted in dark themes** (Known limitation) | **Preserved untouched** |
+ReadEasy does not flatten pages to canvas bitmaps. It isolates the existing page streams and injects graphics state modifications directly into the PDF object tree:
 
-### Note on Known Limitation & V2 Smart Mode
-- **Blend Mode Limitation**: Because the `Difference` blend mode mathematically computes `|Base - Blend|`, all luminance values underneath are inverted. Consequently, embedded photographic JPEGs/PNGs and colored charts appear as photographic negatives in dark themes.
-- **V2 Smart Mode Architecture**: The codebase includes a modular `SmartModeStrategy` interface. In V2 Smart Mode, ReadEasy decompresses the PDF content stream, tokenizes operators, and rewrites fill/stroke color operators (`rg`, `RG`, `k`, `K`, `g`, `G`) while leaving `Do` (XObject image invocation) operators untouched.
+```mermaid
+flowchart LR
+    subgraph PageNode["PDF Page Object (page.node)"]
+        subgraph Contents["Normalized Content Array (Contents)"]
+            direction TB
+            S0["0: Background Stream\nq\nrgb(r,g,b) re f\nQ"]
+            S1["1: Graphics State Enter\nq\n/ReadEasyTransfer gs"]
+            S2["2..N: Original Content Streams\n(Preserved Text Operators, Paths, XObjects)"]
+            SN["N+1: Graphics State Exit\nQ"]
+        end
+
+        subgraph ResourcesDict["Page Resources"]
+            ExtGState["/ExtGState Dictionary"]
+            TransferRef["/ReadEasyTransfer"]
+            TRFunction["Type 2 Transfer Functions (TR)\n(RGB Color Remap Curves: C0 -> C1)"]
+            
+            ExtGState --> TransferRef
+            TransferRef --> TRFunction
+        end
+    end
+
+    S0 --> S1 --> S2 --> SN
+    S1 -.->|"Applies gs"| TransferRef
+```
+
+### Stream Isolation Details
+1. **`page.node.normalize()`**: Unifies single stream objects and arrays into a normalized `PDFArray`.
+2. **Bounds Calculation**: Evaluates the bounding union of `MediaBox` and `CropBox` to prevent edge bleed across arbitrary PDF viewers.
+3. **Background Injection**: A solid vector rectangle (`re f`) matching the target theme is prepended at index 0.
+4. **Transfer State Enclosure**: A push operator (`q`) and `/ReadEasyTransfer gs` are injected at index 1, while a pop operator (`Q`) is appended at the end of the content stream array, preventing state leak.
 
 ---
 
-## Office Document Support (V2 via JSZip)
+## Office Document Architecture (DOCX & PPTX)
 
-- **PPTX**: Edits `ppt/theme/theme1.xml` color schemes (`dk1`, `lt1`, `dk2`, `lt2`) and injects `<p:bg><p:bgPr><a:solidFill><a:srgbClr val="HEX"/></a:solidFill></p:bgPr></p:bg>` into slide masters and individual slides. All media files in `ppt/media/*` remain untouched.
-- **DOCX**: Injects `<w:background w:color="HEX"/>` in `word/document.xml`, enables `<w:displayBackgroundShape/>` in `word/settings.xml`, and updates text colors in `word/styles.xml`. Embedded pictures in `word/media/*` remain untouched.
+Office OpenXML files are ZIP archives containing XML definitions and binary media packages. ReadEasy restyles the styling nodes without altering the underlying document tree or embedded images.
+
+```mermaid
+flowchart LR
+    subgraph OpenXML["OpenXML Archive (JSZip)"]
+        subgraph DOCX["DOCX Processing"]
+            D1["word/document.xml\nInject: <w:background w:color='...'/>\nRemap text run colors (<w:color>)"]
+            D2["word/settings.xml\nInject: <w:displayBackgroundShape/>"]
+            D3["word/styles.xml\nUpdate Default Normal Styles"]
+        end
+
+        subgraph PPTX["PPTX Processing"]
+            P1["ppt/theme/theme1.xml\nRemap <a:clrScheme> (dk1, lt1, dk2, lt2)"]
+            P2["ppt/slides/slide*.xml\nInject: <p:bg><p:bgPr><a:solidFill>..."]
+            P3["ppt/slideMasters/slideMaster*.xml\nUpdate Master Backgrounds"]
+        end
+
+        subgraph Media["Untouched Binaries"]
+            M1["word/media/* and ppt/media/*\n(Bitmaps preserved byte-for-byte)"]
+        end
+    end
+```
 
 ---
 
-## Project Structure
+## Theme Specifications
+
+| Theme | UI Subtitle | Color Transfer Target | Background | Text Target |
+|---|---|---|---|---|
+| **Blackboard** | Dark Slate / Soft Chalk | Inverts white, floors darks | `#2B2B2B` | `#E5E5E5` |
+| **Old Book** | Warm Cream / Sepia | Attenuates blue wavelengths | `#F4ECD8` | `#26221C` |
+| **True Black** | OLED / High Contrast | Linear inversion ($1.0 \rightarrow 0.0$) | `#000000` | `#FFFFFF` |
+| **Amber** | Retro Phosphor CRT | Amber phosphor curve | `#1A1A1A` | `#FFB000` |
+
+---
+
+## Technical Tradeoffs
+
+| Factor | Canvas/Bitmap Rasterization | ReadEasy Vector Transformation |
+|---|---|---|
+| **Text Rendering** | Blurs and pixelates when zoomed | True mathematical Bézier curves at all scales |
+| **File Size Delta** | $+10\text{ MB}$ to $+100\text{ MB}$ per document | $+500\text{ B}$ to $+3.5\text{ KB}$ total |
+| **Text Selectability** | Lost (requires OCR to restore) | 100% native selection, copy, and Ctrl+F |
+| **Processing Speed** | 1000–3000 ms per page | 5–15 ms per page |
+| **Embedded Photos** | Unchanged | Luminance inverted in dark modes (Known vector limitation) |
+
+> **Limitation Note**: Because full-page color transfer maps base luminance values, photographic images embedded in PDFs invert in dark modes. For DOCX/PPTX, embedded images reside in separate package parts (`media/*`) and remain completely untouched.
+
+---
+
+## Security & Self-Containment
+
+- **No Remote Dependencies**: Character map files (`*.bcmap`) are bundled under `public/cmaps/`. No requests are made to third-party CDNs (such as jsDelivr or cdnjs).
+- **Content Security Policy**: Enforced via `vercel.json` and `index.html`:
+  ```
+  default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self' blob: data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';
+  ```
+- **Air-Gapped Processing**: All operations run inside Web Workers and main-thread JavaScript. No analytics, tracking pixels, or outbound telemetry.
+
+---
+
+## Repository Structure
 
 ```
-pdf-dark-mode/
-├── index.html                     # HTML entry point with metadata
-├── package.json                   # Dependencies (pdf-lib, pdfjs-dist, jszip, react, lucide-react)
-├── vite.config.ts                 # Vite bundler configuration
+├── public/
+│   ├── cmaps/                     # 169 bundled offline character maps
+│   └── favicon.svg                # Vector SVG icon
 ├── src/
-│   ├── main.tsx                   # React root mount
-│   ├── App.tsx                    # Main flow orchestrator
-│   ├── index.css                  # Impeccable style system (monochrome dark palette)
+│   ├── App.tsx                    # Main state machine
+│   ├── index.css                  # Impeccable style tokens (monochrome)
+│   ├── version.ts                 # Release version declaration
 │   ├── components/
-│   │   ├── Header.tsx             # Clean brand header with zero-upload badge
-│   │   ├── DropZone.tsx           # Drag-and-drop file picker with sample PDF trigger
-│   │   ├── ThemeSelector.tsx      # 4 theme cards (Blackboard, Old Book, True Black, Amber)
-│   │   ├── PreviewViewport.tsx    # Live Page 1 vector preview + compare toggle + zoom
-│   │   ├── ActionBar.tsx          # "Convert & Download <name>_<theme>.pdf" & progress
-│   │   └── TechNotes.tsx          # Collapsible architecture, tradeoffs & v2 notes
+│   │   ├── Header.tsx             # Minimal brand header
+│   │   ├── DropZone.tsx           # Drag-and-drop input & sample trigger
+│   │   ├── ThemeSelector.tsx      # 4 theme configuration cards
+│   │   ├── PreviewViewport.tsx    # Live Page 1 canvas preview & compare toggle
+│   │   └── ActionBar.tsx          # Export trigger, progress, and file metadata
 │   └── engine/
-│       ├── pdfThemeEngine.ts      # Vector blend-mode engine, layer configs & q/Q wrapping
-│       ├── previewEngine.ts       # PDF.js canvas renderer with DPR retina scaling
-│       ├── officeThemeEngine.ts   # JSZip XML-level restyler for DOCX & PPTX
-│       └── sampleDocument.ts      # Vector sample PDF generator for instant 1-click test
+│       ├── binary.ts              # File header sanity checks & buffer cloning
+│       ├── lazyPreview.ts         # Code-splitting dynamic import boundary
+│       ├── previewEngine.ts       # PDF.js renderer with DPR retina scaling
+│       ├── pdfThemeEngine.ts      # Vector PDF transform engine (pdf-lib)
+│       ├── pdfThemeEngine.test.ts # Vitest regression suite for themes & ExtGState
+│       ├── officeThemeEngine.ts   # JSZip XML engine for DOCX and PPTX
+│       └── sampleDocument.ts      # Vector test document generator
+├── vercel.json                    # Edge routing, headers, CSP, and caching
+└── package.json                   # Dependencies and build scripts
 ```
 
 ---
 
-## Running the Application
+## Development & Verification
 
-### 1. Development Server
 ```bash
+# Install dependencies
 npm install
-npm run dev
-```
-Open the local URL (usually `http://localhost:5173/`).
 
-### 2. Production Build
-```bash
+# Run Vitest regression tests (validates all 4 themes & ExtGState /TR dictionaries)
+npm run test
+
+# Run development server
+npm run dev
+
+# Compile TypeScript and generate production bundle
 npm run build
+
+# Preview production build locally
 npm run preview
 ```
-The static assets in `dist/` can be deployed to any static host (Cloudflare Pages, GitHub Pages, Vercel, Netlify) with zero backend setup.
