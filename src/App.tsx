@@ -4,6 +4,7 @@ import { DropZone } from './components/DropZone';
 import { ThemeSelector } from './components/ThemeSelector';
 import { PreviewViewport } from './components/PreviewViewport';
 import { ActionBar } from './components/ActionBar';
+import { Footer } from './components/Footer';
 import { generateSamplePdf } from './engine/sampleDocument';
 import {
   restylePdf,
@@ -17,7 +18,6 @@ import {
   type OfficeRestyleResult,
 } from './engine/officeThemeEngine';
 import { inspectPdfLazy } from './engine/lazyPreview';
-import { APP_VERSION } from './version';
 import { FileText, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -307,12 +307,7 @@ export const App: React.FC = () => {
       )}
 
       {/* Footer */}
-      <footer className="site-footer">
-        <div className="footer-bottom">
-          <span>Your file is processed in your browser and never uploaded.</span>
-          <span style={{ fontFamily: 'var(--font-mono)' }}>ReadEasy v{APP_VERSION}</span>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 };
