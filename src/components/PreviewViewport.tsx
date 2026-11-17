@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ZoomIn, ZoomOut, RotateCcw, FileText, CheckCircle2 } from 'lucide-react';
 import { RESTYLE_THEMES, type ThemeId } from '../engine/pdfThemeEngine';
-import { renderPdfPageToCanvas } from '../engine/previewEngine';
+import { renderPdfPageToCanvasLazy } from '../engine/lazyPreview';
 
 interface PreviewViewportProps {
   pdfBytes: Uint8Array | null;
@@ -33,7 +33,7 @@ export const PreviewViewport: React.FC<PreviewViewportProps> = ({
       setIsRendering(true);
       setPreviewError(null);
 
-      renderPdfPageToCanvas(pdfBytes, {
+      renderPdfPageToCanvasLazy(pdfBytes, {
         canvas: canvasRef.current,
         scale: zoomScale,
         signal: abortController.signal,

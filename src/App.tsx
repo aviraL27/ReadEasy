@@ -16,7 +16,8 @@ import {
   restylePptx,
   type OfficeRestyleResult,
 } from './engine/officeThemeEngine';
-import { inspectPdf } from './engine/previewEngine';
+import { inspectPdfLazy } from './engine/lazyPreview';
+import { APP_VERSION } from './version';
 import { FileText, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -59,7 +60,7 @@ export const App: React.FC = () => {
       const bytes = new Uint8Array(buffer);
 
       if (format === 'pdf') {
-        const info = await inspectPdf(bytes);
+        const info = await inspectPdfLazy(bytes);
         if (info.encrypted) {
           setErrorMessage('This PDF is password-protected or encrypted. Please unlock it before restyling.');
           return;
@@ -309,7 +310,7 @@ export const App: React.FC = () => {
       <footer className="site-footer">
         <div className="footer-bottom">
           <span>Your file is processed in your browser and never uploaded.</span>
-          <span style={{ fontFamily: 'var(--font-mono)' }}>ReadEasy</span>
+          <span style={{ fontFamily: 'var(--font-mono)' }}>ReadEasy v{APP_VERSION}</span>
         </div>
       </footer>
     </div>

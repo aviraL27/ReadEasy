@@ -3,7 +3,6 @@ import { copyBytes, hasPdfHeader } from './binary';
 
 // Configure PDF.js worker in Vite
 try {
-  // Use unpkg/cdnjs fallback or Vite asset URL
   pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
     'pdfjs-dist/build/pdf.worker.min.mjs',
     import.meta.url
@@ -27,6 +26,7 @@ export interface RenderResult {
 
 /**
  * Renders page 1 of a PDF onto an HTML5 Canvas using PDF.js.
+ * Uses locally bundled character maps (cmaps) for fully self-contained offline execution.
  */
 export async function renderPdfPageToCanvas(
   pdfData: ArrayBuffer | Uint8Array,
@@ -39,9 +39,15 @@ export async function renderPdfPageToCanvas(
   // getDocument transfers this buffer to the PDF.js worker. Keeping the copy
   // local prevents previewing from emptying the upload bytes used for export.
   const workerData = copyBytes(pdfData);
+
+  // Use bundled local cmaps instead of remote CDN
+  const cMapUrl = typeof window !== 'undefined'
+    ? new URL(`${import.meta.env.BASE_URL}cmaps/`, window.location.href).href
+    : '/cmaps/';
+
   const loadingTask = pdfjsLib.getDocument({
     data: workerData,
-    cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.5.438/cmaps/',
+    cMapUrl,
     cMapPacked: true,
   });
 
