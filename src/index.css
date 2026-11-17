@@ -3,7 +3,8 @@
 /* ==========================================================================
    ReadEasy — Impeccable Style System
    Strict monochrome, eye-friendly dark palette, meticulous typographic scale.
-   https://impeccable.style principles applied throughout.
+   Mobile-optimized & responsive down to 320px screens.
+   https://impeccable.style
    ========================================================================== */
 
 :root {
@@ -40,6 +41,11 @@
   padding: 0;
 }
 
+html {
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+}
+
 html, body {
   background-color: var(--bg-page);
   color: var(--text-primary);
@@ -49,6 +55,7 @@ html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 /* Tabular figures for technical metadata */
@@ -92,6 +99,7 @@ a {
 
 /* Layout Container */
 .app-container {
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 24px 64px 24px;
@@ -115,6 +123,7 @@ a {
   display: flex;
   align-items: baseline;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .brand-title {
@@ -157,6 +166,7 @@ a {
   transition: all var(--transition-fast);
   white-space: nowrap;
   outline: none;
+  min-height: 36px;
 }
 
 .btn:focus-visible {
@@ -205,12 +215,14 @@ a {
   padding: 5px 10px;
   font-size: 12px;
   border-radius: var(--radius-sm);
+  min-height: 32px;
 }
 
 .btn-lg {
   padding: 12px 24px;
   font-size: 14px;
   font-weight: 600;
+  min-height: 44px;
 }
 
 .btn:disabled {
@@ -273,8 +285,10 @@ a {
 .dropzone-pills {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  margin-top: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
 }
 
 .format-pill {
@@ -293,7 +307,9 @@ a {
   color: var(--text-secondary);
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .sample-link {
@@ -304,6 +320,7 @@ a {
   background: none;
   border: none;
   font: inherit;
+  padding: 4px;
 }
 .sample-link:hover {
   color: #ffffff;
@@ -319,12 +336,15 @@ a {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 24px;
+  gap: 12px;
 }
 
 .file-info {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex: 1;
 }
 
 .file-icon-box {
@@ -337,6 +357,7 @@ a {
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
+  flex-shrink: 0;
 }
 
 .file-name {
@@ -352,10 +373,11 @@ a {
 .file-stats {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   font-size: 12px;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
+  flex-wrap: wrap;
 }
 
 /* Limitation Notice Banner */
@@ -398,18 +420,6 @@ a {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
-}
-
-@media (max-width: 900px) {
-  .theme-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 520px) {
-  .theme-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 .theme-card {
@@ -490,6 +500,7 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .theme-card.selected .theme-radio {
@@ -601,6 +612,7 @@ a {
   justify-content: center;
   background: #08080a;
   position: relative;
+  -webkit-overflow-scrolling: touch;
 }
 
 .canvas-wrapper {
@@ -610,10 +622,13 @@ a {
   overflow: hidden;
   line-height: 0;
   display: inline-block;
+  max-width: 100%;
 }
 
 .canvas-wrapper canvas {
   display: block;
+  max-width: 100%;
+  height: auto !important;
 }
 
 /* Blend simulation layer overlays */
@@ -624,6 +639,18 @@ a {
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+.viewport-footer {
+  padding: 8px 16px;
+  background: var(--bg-surface-elevated);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  gap: 8px;
 }
 
 /* Action Bar */
@@ -654,6 +681,13 @@ a {
   font-size: 12px;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
+}
+
+.action-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .progress-container {
@@ -700,6 +734,7 @@ a {
   justify-content: space-between;
   font-size: 12px;
   color: var(--text-tertiary);
+  gap: 8px;
 }
 
 /* Spinner */
@@ -715,5 +750,198 @@ a {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* ==========================================================================
+   Responsive & Mobile Adaptations (Tablets & Phones)
+   ========================================================================== */
+
+@media (max-width: 900px) {
+  .theme-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-container {
+    padding: 0 16px 48px 16px;
+  }
+
+  .site-header {
+    padding: 16px 0 14px 0;
+    margin-bottom: 20px;
+  }
+
+  .brand-group {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .brand-title {
+    font-size: 17px;
+  }
+
+  .brand-tagline {
+    font-size: 12px;
+  }
+
+  .dropzone {
+    padding: 36px 16px;
+    gap: 12px;
+  }
+
+  .dropzone-title {
+    font-size: 15px;
+  }
+
+  .dropzone-sub {
+    font-size: 12px;
+  }
+
+  .dropzone-pills {
+    margin-top: 2px;
+  }
+
+  .sample-action {
+    font-size: 11.5px;
+  }
+
+  .file-bar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px 14px;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .file-name {
+    max-width: 100%;
+    font-size: 13px;
+    word-break: break-all;
+  }
+
+  .file-bar .btn {
+    align-self: flex-start;
+    width: 100%;
+    min-height: 38px;
+  }
+
+  .limitation-card {
+    padding: 10px 12px;
+    font-size: 12px;
+    margin-bottom: 20px;
+  }
+
+  .theme-section {
+    margin-bottom: 24px;
+  }
+
+  .theme-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .theme-card {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .theme-preview-box {
+    height: 56px;
+    padding: 8px;
+  }
+
+  .theme-desc {
+    min-height: auto;
+  }
+
+  .preview-stage {
+    margin-bottom: 20px;
+  }
+
+  .viewport-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .toolbar-left, .toolbar-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .toolbar-label {
+    display: none;
+  }
+
+  .view-mode-toggle {
+    flex: 1;
+  }
+
+  .view-mode-btn {
+    flex: 1;
+    text-align: center;
+    padding: 6px 8px;
+    font-size: 11.5px;
+  }
+
+  .canvas-container {
+    padding: 14px;
+    min-height: 280px;
+    max-height: 480px;
+  }
+
+  .viewport-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 10px 12px;
+    gap: 4px;
+    font-size: 11.5px;
+  }
+
+  .action-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    padding: 16px;
+  }
+
+  .action-btn-group {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .action-btn-group .btn {
+    width: 100%;
+    min-height: 44px;
+    font-size: 13.5px;
+  }
+
+  .footer-bottom {
+    flex-direction: column;
+    text-align: center;
+    gap: 6px;
+    font-size: 11.5px;
+  }
+}
+
+@media (max-width: 380px) {
+  .app-container {
+    padding: 0 12px 36px 12px;
+  }
+
+  .btn {
+    padding: 8px 12px;
+  }
+
+  .format-pill {
+    font-size: 10px;
+    padding: 2px 6px;
   }
 }

@@ -107,7 +107,7 @@ export const PreviewViewport: React.FC<PreviewViewportProps> = ({
             </button>
           </div>
 
-          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginLeft: '4px' }}>
+          <span className="toolbar-label" style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginLeft: '4px' }}>
             Live Page 1 Vector Preview
           </span>
         </div>
@@ -129,7 +129,7 @@ export const PreviewViewport: React.FC<PreviewViewportProps> = ({
             >
               <ZoomOut size={14} />
             </button>
-            <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', minWidth: '40px', textAlign: 'center' }}>
+            <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', minWidth: '36px', textAlign: 'center' }}>
               {Math.round((zoomScale / 1.25) * 100)}%
             </span>
             <button
@@ -180,12 +180,13 @@ export const PreviewViewport: React.FC<PreviewViewportProps> = ({
           /* Office Document Preview Mockup */
           <div
             style={{
-              width: '480px',
-              minHeight: '320px',
+              width: '100%',
+              maxWidth: '480px',
+              minHeight: '260px',
               backgroundColor: viewMode === 'themed' ? activeTheme.previewBg : '#ffffff',
               color: viewMode === 'themed' ? activeTheme.previewText : '#18181b',
               borderRadius: 'var(--radius-sm)',
-              padding: '36px',
+              padding: '24px',
               boxShadow: '0 12px 36px rgba(0, 0, 0, 0.5)',
               display: 'flex',
               flexDirection: 'column',
@@ -197,10 +198,10 @@ export const PreviewViewport: React.FC<PreviewViewportProps> = ({
               <FileText size={13} />
               <span>{fileName} ({fileFormat.toUpperCase()})</span>
             </div>
-            <div style={{ fontSize: '18px', fontWeight: 600 }}>
+            <div style={{ fontSize: '16px', fontWeight: 600 }}>
               Office Document Restyler Preview
             </div>
-            <div style={{ fontSize: '13px', lineHeight: 1.6, opacity: 0.85 }}>
+            <div style={{ fontSize: '12.5px', lineHeight: 1.6, opacity: 0.85 }}>
               This {fileFormat.toUpperCase()} file will be restyled directly at the XML package layer.
               Slide and page backgrounds are converted to {activeTheme.name} palette ({activeTheme.previewBg}),
               text run colors are adjusted for maximum contrast, and all embedded pictures in the media package remain intact.
@@ -261,24 +262,13 @@ export const PreviewViewport: React.FC<PreviewViewportProps> = ({
       </div>
 
       {/* Footer bar showing verification indicator */}
-      <div
-        style={{
-          padding: '8px 16px',
-          background: 'var(--bg-surface-elevated)',
-          borderTop: '1px solid var(--border-subtle)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          fontSize: '12px',
-          color: 'var(--text-tertiary)',
-        }}
-      >
+      <div className="viewport-footer">
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <CheckCircle2 size={13} color="#22c55e" />
+          <CheckCircle2 size={13} color="#22c55e" style={{ flexShrink: 0 }} />
           <span>Vector text verification: Selectable text retained without glyph distortion</span>
         </div>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
-          Mode: Vector Color Transfer (Non-Rasterized)
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', whiteSpace: 'nowrap' }}>
+          Vector Color Transfer (Non-Rasterized)
         </div>
       </div>
     </div>

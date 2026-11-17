@@ -36,10 +36,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
   return (
     <div className="action-card">
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div className="action-stats">
           <div className="action-stats-title">
-            Output File: <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{downloadFileName}</span>
+            Output File: <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', wordBreak: 'break-all' }}>{downloadFileName}</span>
           </div>
           <div className="action-stats-detail">
             Original: {formatFileSize(originalSizeBytes)} • Estimated Delta: ~ +1 KB • Text Fidelity: 100% Vector
@@ -62,7 +62,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         )}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div className="action-btn-group">
         <button
           type="button"
           className="btn btn-secondary"
