@@ -77,7 +77,11 @@ export const App: React.FC = () => {
     } catch (err: unknown) {
       console.error(err);
       const msg = err instanceof Error ? err.message : String(err);
-      setErrorMessage(`Could not read file: ${msg}`);
+      if (msg.includes('dynamically imported module') || msg.includes('Failed to load preview engine')) {
+        setErrorMessage('Could not load PDF preview engine from network. Please check your internet connection or refresh and try again.');
+      } else {
+        setErrorMessage(`Could not read file: ${msg}`);
+      }
     }
   };
 
